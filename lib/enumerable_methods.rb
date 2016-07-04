@@ -1,32 +1,22 @@
 module Enumerable
   def my_each
-    enum = Enumerator.new do |y|
-      for value in self
-        y << block_given? ? yield(value) : value
-      end
-    end
+    return enum_for :my_each unless block_given?
 
-    block_given? ? enum.to_a : enum
+    for value in self
+      yield value
+    end
   end
 
   def my_each_with_index
-    i = 0
-    enum = Enumerator.new do |y|
-      self.my_each do |value|
-        y << block_given? ? yield(value, i) : [value, i]
-        i += 1
-      end
-    end
+    return enum_for :my_each_with_index unless block_given?
 
-    block_given? ? enum.to_a : enum
+    self.my_each.zip(0..Float::INFINITY) { |value, i| yield value, i }
   end
 
   def my_select
-    enum = Enumerator.new do |y|
-      self.my_each { |item| y << item if yield item }
-    end
+    return enum_for :my_select unless block_given?
 
-    block_given? ? enum.to_a : enum
+    Enumerator.new { |y| self.my_each { |item| y << item if yield item } }.to_a
   end
 
   def my_all?
@@ -47,7 +37,7 @@ module Enumerable
     true
   end
 
-  def my_count *match
+  def my_count(*match)
     count = 0
     use_match, match = match.length == 1, match[0]
     self.my_each do |value|
@@ -59,48 +49,19 @@ module Enumerable
   end
 
   def my_map
-    enum = Enumerator.new do |y|
-      self.my_each { |value| y << yield(value) }
-    end
-    block_given? ? enum.to_a : enum
+    return enum_for :my_map unless block_given?
+
+    Enumerator.new { |y| self.my_each { |value| y << yield(value) } }.to_a
   end
 
-  def my_inject *args
-    has_initial = false
-    has_symbol = false
-    initial = nil
-    symbol = nil
+  def my_inject(initial=nil, sym=nil)
+    # swap arguments if not block depending on symbol
+    (initial, sym = sym, initial) if not block_given? and sym === nil
 
-    if args.length == 2
-      initial, symbol = args
-      has_initial = true
-      has_symbol = true
-    elsif args.length == 1
-      if block_given?
-        initial = args[0]
-        has_initial = true
-      else
-        symbol = args[0]
-        has_symbol = true
-      end
-    elsif args.length != 0
-      # raise error
-    end
+    enum = self.my_each # create enumerator
+    left = initial || enum.next # use initial or next
 
-    left = nil
-    self.my_each_with_index do |right, i|
-      if i == 0
-        if has_initial
-          left = initial
-        else
-          left = right
-          next
-        end
-      end
-
-      left = yield(left, right) if block_given?
-      left = left.send(symbol, right) if has_symbol
-    end
+    loop { left = block_given? ? yield(left, enum.next) : left.send(sym, enum.next) }
     left
   end
 end
